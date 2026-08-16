@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllVocabulary, insertVocabulary } from '@/lib/db';
+import { getVocabularyWords, deleteAllVocabularyData } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const data = await getAllVocabulary();
+    const { searchParams } = new URL(request.url);
+    const fileIdStr = searchParams.get('fileId');
+    const fileId = fileIdStr ? parseInt(fileIdStr, 10) : undefined;
+
+    const data = await getVocabularyWords(fileId);
     return NextResponse.json({
       success: true,
       count: data.length,
@@ -23,33 +27,17 @@ export async function GET() {
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function DELETE() {
   try {
-    const body = await request.json();
-    const { words, mode = 'append' } = body;
-
-    if (!Array.isArray(words) || words.length === 0) {
-      return NextResponse.json(
-        { success: false, error: '유효한 단어 데이터 목록(배열)이 필요합니다.' },
-        { status: 400 }
-      );
-    }
-
-    const replace = mode === 'replace';
-    const inserted = await insertVocabulary(words, replace);
-
+    await deleteAllVocabularyData();
     return NextResponse.json({
       success: true,
-      inserted,
-      message: `${inserted}개의 단어가 성공적으로 ${replace ? '동기화(덮어쓰기)' : '추가'}되었습니다.`,
+      message: 'Neon DB의 모든 데이터가 완전히 삭제되었습니다.',
     });
   } catch (error: any) {
-    console.error('Error saving vocabulary to Neon DB:', error);
+    console.error('Error truncating vocabulary DB:', error);
     return NextResponse.json(
-      {
-        success: false,
-        error: error.message || 'Failed to save vocabulary to database',
-      },
+      { success: false, error: error.message || '데이터 완전 삭제 실패' },
       { status: 500 }
     );
   }

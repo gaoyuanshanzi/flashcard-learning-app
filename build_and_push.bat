@@ -5,6 +5,6 @@ if %errorlevel% neq 0 (
   exit /b %errorlevel%
 )
 git add .
-git commit -m "feat: Add Previous button, Noto Sans JP fonts, manual CSV encoding selector (Shift-JIS/EUC-JP/UTF-8)"
+git commit -m "feat: Neon DB CSV file-level manager, selective file deletion, and complete DB wipe"
 git push origin master
 echo Done!
