@@ -61,7 +61,18 @@ export function sliceWordSet(input: string, allWords: WordItem[]): SetSliceResul
     };
   }
 
-  const totalWords = allWords.length;
+  // Filter out any header words
+  const validWords = allWords.filter(w => !isHeaderWordItem(w));
+  const totalWords = validWords.length;
+
+  if (totalWords === 0) {
+    return {
+      success: false,
+      words: [],
+      message: '유효한 단어 데이터가 없습니다.',
+    };
+  }
+
   const startIndex1Based = (M - 1) * N + 1;
   const rawEndIndex1Based = M * N;
 
@@ -78,7 +89,7 @@ export function sliceWordSet(input: string, allWords: WordItem[]): SetSliceResul
   // 5. Slice calculation (0-based)
   const start0 = startIndex1Based - 1;
   const end0 = Math.min(rawEndIndex1Based, totalWords);
-  const sliced = allWords.slice(start0, end0);
+  const sliced = validWords.slice(start0, end0);
 
   const isPartialLastSet = rawEndIndex1Based > totalWords;
   let message: string | undefined;
@@ -99,6 +110,26 @@ export function sliceWordSet(input: string, allWords: WordItem[]): SetSliceResul
     requestedN: N,
     requestedM: M,
   };
+}
+
+export const HEADER_KEYWORDS = new Set([
+  'foreign', 'word', '단어', '외국어', '일본어', '영어', 'japanese', 'english',
+  'korean', 'meaning', '뜻', '의미', '번역', 'notes', '설명', '발음', '품사', '예문',
+  '日本語', '単語', '漢字', 'かな', '読み', '意味', '訳', '韓国語', 'no', 'num', '번호', 'id',
+  'vocabulary', 'term', 'definition', 'translation', '한글', '해석', '내용'
+]);
+
+export function isHeaderWordItem(word: { foreign_word?: string; korean_meaning?: string }): boolean {
+  if (!word) return false;
+  const f = (word.foreign_word || '').replace(/[\[\]\(\)\s]/g, '').toLowerCase();
+  const k = (word.korean_meaning || '').replace(/[\[\]\(\)\s]/g, '').toLowerCase();
+
+  // If foreign word itself is literally "일본어", "단어", "외국어", "word", "japanese", "単語", "日本語", "no"
+  if (HEADER_KEYWORDS.has(f)) return true;
+  // If korean meaning is literally "한국어", "뜻", "의미", "meaning", "translation"
+  if (HEADER_KEYWORDS.has(k) && (f.length <= 6 || HEADER_KEYWORDS.has(f))) return true;
+
+  return false;
 }
 
 /**
@@ -124,14 +155,7 @@ export function parseCSVToWords(csvText: string): { words: WordItem[]; error?: s
 
     // The 1st row is always the header row per specification. Skip row index 0.
     const startIndex = rows.length > 1 ? 1 : 0;
-
     const words: WordItem[] = [];
-    const headerWords = new Set([
-      'foreign', 'word', '단어', '외국어', '일본어', '영어', 'japanese', 'english',
-      'korean', 'meaning', '뜻', '의미', '번역', 'notes', '설명', '발음', '품사', '예문',
-      '日本語', '単語', '漢字', 'かな', '読み', '意味', '訳', '韓国語', 'no', 'num', '번호', 'id',
-      'vocabulary', 'term', 'definition', 'translation'
-    ]);
 
     for (let i = startIndex; i < rows.length; i++) {
       const row = rows[i];
@@ -141,20 +165,18 @@ export function parseCSVToWords(csvText: string): { words: WordItem[]; error?: s
       const korean = (row[1] || '').trim();
       const notes = (row[2] || '').trim();
 
-      // Check if this row is an accidental header row
-      const isHeaderRow =
-        headerWords.has(foreign.toLowerCase()) &&
-        (headerWords.has(korean.toLowerCase()) || !korean);
+      const candidate: WordItem = {
+        foreign_word: foreign,
+        korean_meaning: korean,
+        notes: notes || undefined,
+      };
 
-      if (isHeaderRow) continue;
+      // Filter out any header row words (e.g. "일본어", "단어", "word", "日本語")
+      if (isHeaderWordItem(candidate)) continue;
 
       // Only add if at least foreign word or korean meaning exists
       if (foreign || korean) {
-        words.push({
-          foreign_word: foreign,
-          korean_meaning: korean,
-          notes: notes || undefined,
-        });
+        words.push(candidate);
       }
     }
 

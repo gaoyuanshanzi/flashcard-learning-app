@@ -8,7 +8,7 @@ import { Flashcard } from '@/components/Flashcard';
 import { RoundSummary } from '@/components/RoundSummary';
 import { Toast, ToastMessage } from '@/components/Toast';
 import { WordItem, SAMPLE_WORDS } from '@/lib/sample-data';
-import { sliceWordSet } from '@/lib/word-utils';
+import { sliceWordSet, isHeaderWordItem } from '@/lib/word-utils';
 import { Layers, Sparkles, AlertCircle } from 'lucide-react';
 
 export default function HomePage() {
@@ -65,8 +65,9 @@ export default function HomePage() {
 
   // When a new set is loaded via N-M input
   const handleSetLoaded = (words: WordItem[], label: string) => {
-    setCurrentSetWords(words);
-    setActiveRoundWords(words);
+    const cleanWords = words.filter(w => !isHeaderWordItem(w));
+    setCurrentSetWords(cleanWords);
+    setActiveRoundWords(cleanWords);
     setCurrentSetInfo(label);
     setCurrentRound(1);
     setCurrentIndex(0);
