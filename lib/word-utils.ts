@@ -107,7 +107,9 @@ export function sliceWordSet(input: string, allWords: WordItem[]): SetSliceResul
  */
 export function parseCSVToWords(csvText: string): { words: WordItem[]; error?: string } {
   try {
-    const result = Papa.parse<string[]>(csvText.trim(), {
+    // Strip BOM and clean whitespace
+    const cleanText = csvText.replace(/^\uFEFF/, '').trim();
+    const result = Papa.parse<string[]>(cleanText, {
       skipEmptyLines: 'greedy',
     });
 

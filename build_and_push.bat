@@ -5,6 +5,6 @@ if %errorlevel% neq 0 (
   exit /b %errorlevel%
 )
 git add .
-git commit -m "feat: Neon DB CSV file-level manager, selective file deletion, and complete DB wipe"
+git commit -m "fix: Smart linguistic CSV encoding detector, BOM handling, and live 1-click re-decoder"
 git push origin master
 echo Done!
