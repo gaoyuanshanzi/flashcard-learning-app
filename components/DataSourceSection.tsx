@@ -35,6 +35,28 @@ export const DataSourceSection: React.FC<DataSourceSectionProps> = ({
   const [loadingDb, setLoadingDb] = useState(false);
   const [savingDb, setSavingDb] = useState(false);
 
+  // Detect the best encoding for a buffer by trying UTF-8, Shift-JIS, EUC-JP in order.
+  const decodeWithBestEncoding = (buffer: ArrayBuffer): { text: string; encoding: string } => {
+    const encodings = ['utf-8', 'shift-jis', 'euc-jp'];
+
+    for (const enc of encodings) {
+      try {
+        const decoder = new TextDecoder(enc, { fatal: true });
+        const text = decoder.decode(buffer);
+        // If UTF-8 decoded without errors, check for common garble indicator (replacement char)
+        if (!text.includes('\uFFFD')) {
+          return { text, encoding: enc };
+        }
+      } catch {
+        // Decoding failed for this encoding; try next
+      }
+    }
+
+    // Fallback: decode with utf-8 non-fatal (best effort)
+    const text = new TextDecoder('utf-8', { fatal: false }).decode(buffer);
+    return { text, encoding: 'utf-8 (fallback)' };
+  };
+
   // Handle CSV file upload
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -47,7 +69,8 @@ export const DataSourceSection: React.FC<DataSourceSectionProps> = ({
 
     const reader = new FileReader();
     reader.onload = event => {
-      const text = event.target?.result as string;
+      const buffer = event.target?.result as ArrayBuffer;
+      const { text, encoding } = decodeWithBestEncoding(buffer);
       const { words, error } = parseCSVToWords(text);
       if (error) {
         onShowToast('error', error);
@@ -56,11 +79,11 @@ export const DataSourceSection: React.FC<DataSourceSectionProps> = ({
       setAllWords(words);
       onShowToast(
         'success',
-        `CSV 파일에서 ${words.length.toLocaleString()}개의 단어를 성공적으로 불러왔습니다.`
+        `CSV 파일에서 ${words.length.toLocaleString()}개의 단어를 성공적으로 불러왔습니다. (인코딩: ${encoding})`
       );
       onDataLoaded();
     };
-    reader.readAsText(file, 'utf-8');
+    reader.readAsArrayBuffer(file);
 
     // Reset file input so same file can be reselected if needed
     e.target.value = '';
