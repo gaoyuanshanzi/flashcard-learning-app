@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   XCircle,
   ArrowRight,
+  ArrowLeft,
   Sparkles,
   RotateCw,
   Eye,
@@ -26,6 +27,7 @@ interface FlashcardProps {
   onPass: () => void;
   onFail: () => void;
   onNext: () => void;
+  onPrev: () => void;
   onManualFlip?: () => void;
 }
 
@@ -41,19 +43,34 @@ export const Flashcard: React.FC<FlashcardProps> = ({
   onPass,
   onFail,
   onNext,
+  onPrev,
   onManualFlip,
 }) => {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
-  // Web Speech API TTS for word pronunciation
+  // Web Speech API TTS for word pronunciation (Auto detect Japanese / Korean / English)
   const handlePlayTTS = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
 
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(currentWord.foreign_word);
-    utterance.lang = 'en-US';
-    utterance.rate = 0.9;
+    const textToSpeak = studyMode === 'foreignFirst' ? currentWord.foreign_word : currentWord.korean_meaning;
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
+
+    // Detect language: Japanese (Hiragana, Katakana, Kanji), Korean (Hangul), or English
+    const isJapanese = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(textToSpeak);
+    const isKorean = /[\uac00-\ud7af]/.test(textToSpeak);
+
+    if (isJapanese) {
+      utterance.lang = 'ja-JP';
+      utterance.rate = 0.85;
+    } else if (isKorean) {
+      utterance.lang = 'ko-KR';
+      utterance.rate = 0.9;
+    } else {
+      utterance.lang = 'en-US';
+      utterance.rate = 0.9;
+    }
 
     utterance.onstart = () => setIsPlayingAudio(true);
     utterance.onend = () => setIsPlayingAudio(false);
@@ -62,10 +79,9 @@ export const Flashcard: React.FC<FlashcardProps> = ({
     window.speechSynthesis.speak(utterance);
   };
 
-  // Keyboard shortcut listener (1: Pass, 2: Fail, Space/Enter: Next)
+  // Keyboard shortcut listener (1: Pass, 2: Fail, Space/Enter/ArrowRight: Next, ArrowLeft: Prev)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if typing in an input field
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
         return;
       }
@@ -76,12 +92,14 @@ export const Flashcard: React.FC<FlashcardProps> = ({
       } else if (e.key === '2') {
         e.preventDefault();
         onFail();
-      } else if (e.key === ' ' || e.key === 'Enter') {
+      } else if (e.key === 'ArrowLeft' || e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        onPrev();
+      } else if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowRight') {
         e.preventDefault();
         if (isRevealed) {
           onNext();
         } else {
-          // If not revealed yet, space/enter reveals and defaults to manual view or pass
           if (onManualFlip) onManualFlip();
           else onPass();
         }
@@ -90,7 +108,7 @@ export const Flashcard: React.FC<FlashcardProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isRevealed, onPass, onFail, onNext, onManualFlip]);
+  }, [isRevealed, onPass, onFail, onNext, onPrev, onManualFlip]);
 
   const progressPercent = Math.round(((currentIndex + 1) / totalInRound) * 100);
 
@@ -219,12 +237,30 @@ export const Flashcard: React.FC<FlashcardProps> = ({
         )}
       </div>
 
-      {/* Bottom Action Button Controls */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {/* Pass Button */}
+      {/* Bottom Action Button Controls: Previous, Pass, Fail, Next */}
+      <div className="grid grid-cols-2 sm:grid-cols-12 gap-3">
+        {/* Previous Button (2 cols on sm) */}
+        <button
+          onClick={onPrev}
+          disabled={currentIndex === 0}
+          className={`sm:col-span-3 flex items-center justify-center gap-1.5 py-4 px-4 rounded-2xl font-bold text-sm transition-all border shadow-xs ${
+            currentIndex === 0
+              ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'
+              : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300 hover:text-slate-900 active:scale-98'
+          }`}
+          title="이전 단어로 이동 (← 방향키 / P)"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Prev (이전)</span>
+          <kbd className="hidden lg:inline text-[11px] font-mono opacity-50 ml-1 px-1.5 py-0.5 bg-black/5 rounded">
+            ←
+          </kbd>
+        </button>
+
+        {/* Pass Button (3 cols on sm) */}
         <button
           onClick={onPass}
-          className={`flex items-center justify-center gap-2 py-4 px-6 rounded-2xl font-bold text-base transition-all shadow-sm active:scale-98 ${
+          className={`sm:col-span-3 flex items-center justify-center gap-2 py-4 px-4 rounded-2xl font-bold text-base transition-all shadow-sm active:scale-98 ${
             isRevealed && status === 'passed'
               ? 'bg-emerald-600 text-white ring-4 ring-emerald-200'
               : 'bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 border border-emerald-300'
@@ -237,10 +273,10 @@ export const Flashcard: React.FC<FlashcardProps> = ({
           </kbd>
         </button>
 
-        {/* Fail Button */}
+        {/* Fail Button (3 cols on sm) */}
         <button
           onClick={onFail}
-          className={`flex items-center justify-center gap-2 py-4 px-6 rounded-2xl font-bold text-base transition-all shadow-sm active:scale-98 ${
+          className={`sm:col-span-3 flex items-center justify-center gap-2 py-4 px-4 rounded-2xl font-bold text-base transition-all shadow-sm active:scale-98 ${
             isRevealed && status === 'failed'
               ? 'bg-rose-600 text-white ring-4 ring-rose-200'
               : 'bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-700 border border-rose-300'
@@ -253,14 +289,14 @@ export const Flashcard: React.FC<FlashcardProps> = ({
           </kbd>
         </button>
 
-        {/* Next Button */}
+        {/* Next Button (3 cols on sm) */}
         <button
           onClick={onNext}
-          className="flex items-center justify-center gap-2 py-4 px-6 rounded-2xl font-bold text-base bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 active:scale-98"
+          className="col-span-2 sm:col-span-3 flex items-center justify-center gap-1.5 py-4 px-4 rounded-2xl font-bold text-base bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 active:scale-98"
         >
-          <span>Next (다음 단어)</span>
-          <ArrowRight className="w-5 h-5" />
-          <kbd className="hidden md:inline text-xs font-mono opacity-60 ml-1 px-1.5 py-0.5 bg-white/20 rounded">
+          <span>Next (다음)</span>
+          <ArrowRight className="w-4 h-4" />
+          <kbd className="hidden lg:inline text-xs font-mono opacity-60 ml-1 px-1.5 py-0.5 bg-white/20 rounded">
             Space
           </kbd>
         </button>

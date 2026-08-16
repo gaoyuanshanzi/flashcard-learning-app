@@ -10,6 +10,8 @@ import {
   Sparkles,
   Save,
   Check,
+  Globe,
+  Settings2,
 } from 'lucide-react';
 import { WordItem, SAMPLE_WORDS } from '@/lib/sample-data';
 import { parseCSVToWords, exportWordsToCSV, downloadCSVFile } from '@/lib/word-utils';
@@ -23,6 +25,8 @@ interface DataSourceSectionProps {
   onDataLoaded: () => void;
 }
 
+export type CsvEncodingOption = 'auto' | 'utf-8' | 'shift-jis' | 'euc-jp' | 'euc-kr' | 'utf-16le';
+
 export const DataSourceSection: React.FC<DataSourceSectionProps> = ({
   dataSource,
   setDataSource,
@@ -34,27 +38,67 @@ export const DataSourceSection: React.FC<DataSourceSectionProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loadingDb, setLoadingDb] = useState(false);
   const [savingDb, setSavingDb] = useState(false);
+  const [selectedEncoding, setSelectedEncoding] = useState<CsvEncodingOption>('auto');
 
-  // Detect the best encoding for a buffer by trying UTF-8, Shift-JIS, EUC-JP in order.
-  const decodeWithBestEncoding = (buffer: ArrayBuffer): { text: string; encoding: string } => {
-    const encodings = ['utf-8', 'shift-jis', 'euc-jp'];
-
-    for (const enc of encodings) {
+  // Enhanced decode function supporting auto-detection & manual override
+  const decodeBufferWithEncoding = (
+    buffer: ArrayBuffer,
+    preferred: CsvEncodingOption
+  ): { text: string; encoding: string } => {
+    // If user explicitly picked an encoding other than auto:
+    if (preferred !== 'auto') {
       try {
-        const decoder = new TextDecoder(enc, { fatal: true });
-        const text = decoder.decode(buffer);
-        // If UTF-8 decoded without errors, check for common garble indicator (replacement char)
-        if (!text.includes('\uFFFD')) {
-          return { text, encoding: enc };
-        }
-      } catch {
-        // Decoding failed for this encoding; try next
+        const decoder = new TextDecoder(preferred, { fatal: false });
+        return { text: decoder.decode(buffer), encoding: preferred };
+      } catch (err: any) {
+        console.warn(`Decoding with ${preferred} failed:`, err);
       }
     }
 
-    // Fallback: decode with utf-8 non-fatal (best effort)
-    const text = new TextDecoder('utf-8', { fatal: false }).decode(buffer);
-    return { text, encoding: 'utf-8 (fallback)' };
+    // Auto-detect mode: Check BOM first
+    const uint8 = new Uint8Array(buffer);
+    if (uint8.length >= 3 && uint8[0] === 0xef && uint8[1] === 0xbb && uint8[2] === 0xbf) {
+      return { text: new TextDecoder('utf-8').decode(buffer), encoding: 'utf-8 (BOM)' };
+    }
+    if (uint8.length >= 2 && uint8[0] === 0xff && uint8[1] === 0xfe) {
+      return { text: new TextDecoder('utf-16le').decode(buffer), encoding: 'utf-16le (BOM)' };
+    }
+
+    // Try encodings in order: UTF-8 strict -> Shift-JIS -> EUC-KR -> EUC-JP -> UTF-16LE
+    const candidateEncodings = ['utf-8', 'shift-jis', 'euc-kr', 'euc-jp', 'utf-16le'];
+
+    for (const enc of candidateEncodings) {
+      try {
+        const decoder = new TextDecoder(enc, { fatal: true });
+        const decoded = decoder.decode(buffer);
+
+        // Check if output contains replacement characters or suspicious unreadable sequences
+        if (!decoded.includes('\uFFFD')) {
+          // If Japanese characters are present (Hiragana, Katakana, Kanji), Shift-JIS or UTF-8 is confirmed
+          return { text: decoded, encoding: enc };
+        }
+      } catch {
+        // Continue to next candidate
+      }
+    }
+
+    // If none passed strict check without replacement characters, try Shift-JIS non-fatal first (common for Japanese CSV)
+    try {
+      const sjisDecoded = new TextDecoder('shift-jis', { fatal: false }).decode(buffer);
+      // If it contains Japanese characters without excessive replacement chars
+      const hasJapanese = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(sjisDecoded);
+      if (hasJapanese) {
+        return { text: sjisDecoded, encoding: 'shift-jis' };
+      }
+    } catch {
+      // ignore
+    }
+
+    // Final fallback
+    return {
+      text: new TextDecoder('utf-8', { fatal: false }).decode(buffer),
+      encoding: 'utf-8 (기본)',
+    };
   };
 
   // Handle CSV file upload
@@ -62,30 +106,31 @@ export const DataSourceSection: React.FC<DataSourceSectionProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.name.endsWith('.csv')) {
-      onShowToast('warning', 'CSV(.csv) 확장자의 파일만 업로드할 수 있습니다.');
+    if (!file.name.endsWith('.csv') && !file.name.endsWith('.txt')) {
+      onShowToast('warning', 'CSV(.csv) 파일만 업로드할 수 있습니다.');
       return;
     }
 
     const reader = new FileReader();
     reader.onload = event => {
       const buffer = event.target?.result as ArrayBuffer;
-      const { text, encoding } = decodeWithBestEncoding(buffer);
+      const { text, encoding } = decodeBufferWithEncoding(buffer, selectedEncoding);
       const { words, error } = parseCSVToWords(text);
+
       if (error) {
         onShowToast('error', error);
         return;
       }
+
       setAllWords(words);
       onShowToast(
         'success',
-        `CSV 파일에서 ${words.length.toLocaleString()}개의 단어를 성공적으로 불러왔습니다. (인코딩: ${encoding})`
+        `CSV 파일에서 ${words.length.toLocaleString()}개의 단어를 불러왔습니다. (인코딩: ${encoding.toUpperCase()})`
       );
       onDataLoaded();
     };
-    reader.readAsArrayBuffer(file);
 
-    // Reset file input so same file can be reselected if needed
+    reader.readAsArrayBuffer(file);
     e.target.value = '';
   };
 
@@ -121,11 +166,23 @@ export const DataSourceSection: React.FC<DataSourceSectionProps> = ({
         notes: item.notes,
       }));
 
-      setAllWords(words);
-      onShowToast(
-        'success',
-        `Neon DB에서 ${words.length.toLocaleString()}개의 단어를 성공적으로 불러왔습니다.`
+      // Check if the loaded DB data contains broken characters from a previous corrupted sync
+      const hasBrokenChars = words.some(
+        w => w.foreign_word.includes('\uFFFD') || w.korean_meaning.includes('\uFFFD')
       );
+
+      setAllWords(words);
+      if (hasBrokenChars) {
+        onShowToast(
+          'warning',
+          'DB에 이전에 깨진 상태로 저장된 단어가 있습니다. 올바른 CSV 파일을 업로드한 후 [Neon DB로 새로 저장/동기화]를 눌러 덮어써 주세요!'
+        );
+      } else {
+        onShowToast(
+          'success',
+          `Neon DB에서 ${words.length.toLocaleString()}개의 단어를 성공적으로 불러왔습니다.`
+        );
+      }
       onDataLoaded();
     } catch (err: any) {
       onShowToast('error', `Neon DB 연동 오류: ${err.message}`);
@@ -158,7 +215,7 @@ export const DataSourceSection: React.FC<DataSourceSectionProps> = ({
 
       onShowToast(
         'success',
-        `현재 ${data.inserted.toLocaleString()}개 단어가 Neon DB에 성공적으로 동기화되었습니다.`
+        `현재 ${data.inserted.toLocaleString()}개 단어가 Neon DB에 성공적으로 덮어쓰기 저장되었습니다.`
       );
     } catch (err: any) {
       onShowToast('error', `Neon DB 저장 오류: ${err.message}`);
@@ -219,6 +276,36 @@ export const DataSourceSection: React.FC<DataSourceSectionProps> = ({
         </div>
       </div>
 
+      {/* CSV Encoding Selector Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+        <div className="flex items-center gap-1.5 text-slate-600 font-medium">
+          <Globe className="w-3.5 h-3.5 text-blue-600" />
+          <span>CSV 인코딩 설정:</span>
+        </div>
+
+        <div className="flex items-center gap-1">
+          {[
+            { key: 'auto', label: '⚡ 자동 감지' },
+            { key: 'shift-jis', label: '🇯🇵 Shift-JIS (일본어)' },
+            { key: 'utf-8', label: '🌐 UTF-8' },
+            { key: 'euc-kr', label: '🇰🇷 EUC-KR (한국어)' },
+            { key: 'euc-jp', label: 'EUC-JP' },
+          ].map(item => (
+            <button
+              key={item.key}
+              onClick={() => setSelectedEncoding(item.key as CsvEncodingOption)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+                selectedEncoding === item.key
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Action Buttons for Current Mode */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Left Side: Load Actions */}
@@ -227,7 +314,7 @@ export const DataSourceSection: React.FC<DataSourceSectionProps> = ({
             type="file"
             ref={fileInputRef}
             onChange={handleFileUpload}
-            accept=".csv"
+            accept=".csv,.txt"
             className="hidden"
           />
 
@@ -264,9 +351,10 @@ export const DataSourceSection: React.FC<DataSourceSectionProps> = ({
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl text-xs font-semibold transition-colors"
+                title="로컬 일본어/다국어 CSV를 업로드한 후 Neon DB에 새로 동기화"
               >
                 <Upload className="w-3.5 h-3.5 text-slate-500" />
-                CSV 불러온 후 DB 동기화
+                CSV 파일 불러오기
               </button>
             </>
           )}
@@ -280,10 +368,10 @@ export const DataSourceSection: React.FC<DataSourceSectionProps> = ({
                 onClick={() => handleSaveToNeon('replace')}
                 disabled={savingDb}
                 className="flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-xs font-semibold transition-colors disabled:opacity-50"
-                title="현재 로드된 단어 목록을 Neon PostgreSQL DB에 일괄 저장"
+                title="현재 로드된 단어 목록을 Neon PostgreSQL DB에 일괄 덮어쓰기 저장"
               >
                 <Save className="w-3.5 h-3.5" />
-                {savingDb ? 'DB 저장 중...' : 'Neon DB로 동기화/저장'}
+                {savingDb ? 'DB 저장 중...' : 'Neon DB로 새로 저장/동기화'}
               </button>
 
               <button

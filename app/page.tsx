@@ -144,6 +144,14 @@ export default function HomePage() {
     setRoundPassWords(prev => prev.filter(w => w.foreign_word !== currentWord.foreign_word));
   };
 
+  // Card Previous action
+  const handlePrevious = () => {
+    if (activeRoundWords.length === 0 || currentIndex === 0) return;
+    setCurrentIndex(prev => Math.max(0, prev - 1));
+    setIsRevealed(false);
+    setCardStatus('pending');
+  };
+
   // Card Next action
   const handleNext = () => {
     if (activeRoundWords.length === 0) return;
@@ -265,6 +273,7 @@ export default function HomePage() {
                 onPass={handlePass}
                 onFail={handleFail}
                 onNext={handleNext}
+                onPrev={handlePrevious}
                 onManualFlip={() => setIsRevealed(true)}
               />
             )

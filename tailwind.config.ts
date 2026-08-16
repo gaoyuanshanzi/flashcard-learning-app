@@ -14,7 +14,18 @@ const config: Config = {
         foreground: "var(--foreground)",
       },
       fontFamily: {
-        sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: [
+          "'Plus Jakarta Sans'",
+          "'Pretendard'",
+          "'Noto Sans JP'",
+          "'Noto Sans KR'",
+          "'Hiragino Sans'",
+          "'Meiryo'",
+          "'Yu Gothic'",
+          "ui-sans-serif",
+          "system-ui",
+          "sans-serif",
+        ],
       },
       boxShadow: {
         subtle: "0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03)",
