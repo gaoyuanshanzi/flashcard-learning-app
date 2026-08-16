@@ -276,12 +276,29 @@ export const DataSourceSection: React.FC<DataSourceSectionProps> = ({
         throw new Error(data.error || 'DB 단어 조회 실패');
       }
 
-      const words: WordItem[] = data.data.map((item: any) => ({
+      const headerWords = new Set([
+        'foreign', 'word', '단어', '외국어', '일본어', '영어', 'japanese', 'english',
+        'korean', 'meaning', '뜻', '의미', '번역', 'notes', '설명', '발음',
+        '日本語', '単語', '漢字', 'かな', '読み', '意味', '訳', '韓国語', 'no', 'num', '번호', 'id'
+      ]);
+
+      let words: WordItem[] = data.data.map((item: any) => ({
         id: item.id,
         foreign_word: item.foreign_word,
         korean_meaning: item.korean_meaning,
         notes: item.notes,
       }));
+
+      // If the 1st word in DB is a header row, clean it up
+      if (words.length > 0) {
+        const first = words[0];
+        const isHeader =
+          headerWords.has((first.foreign_word || '').toLowerCase().trim()) &&
+          (headerWords.has((first.korean_meaning || '').toLowerCase().trim()) || !first.korean_meaning);
+        if (isHeader) {
+          words = words.slice(1);
+        }
+      }
 
       setAllWords(words);
       setRawFileBuffer(null);

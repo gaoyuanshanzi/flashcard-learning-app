@@ -5,6 +5,6 @@ if %errorlevel% neq 0 (
   exit /b %errorlevel%
 )
 git add .
-git commit -m "fix: Smart linguistic CSV encoding detector, BOM handling, and live 1-click re-decoder"
+git commit -m "fix: Always skip 1st header row when loading CSV and filter out header metadata rows"
 git push origin master
 echo Done!

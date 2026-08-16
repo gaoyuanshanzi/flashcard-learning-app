@@ -122,16 +122,17 @@ export function parseCSVToWords(csvText: string): { words: WordItem[]; error?: s
       return { words: [], error: 'CSV 파일에 유효한 데이터가 없습니다.' };
     }
 
-    // Check if first row is a header
-    let startIndex = 0;
-    const firstRow = rows[0].map(col => String(col || '').toLowerCase().trim());
-    const headerKeywords = ['foreign', 'word', '단어', '외국어', 'korean', 'meaning', '뜻', 'notes', '설명', '발음'];
-    const isHeader = firstRow.some(col => headerKeywords.some(kw => col.includes(kw)));
-    if (isHeader) {
-      startIndex = 1;
-    }
+    // The 1st row is always the header row per specification. Skip row index 0.
+    const startIndex = rows.length > 1 ? 1 : 0;
 
     const words: WordItem[] = [];
+    const headerWords = new Set([
+      'foreign', 'word', '단어', '외국어', '일본어', '영어', 'japanese', 'english',
+      'korean', 'meaning', '뜻', '의미', '번역', 'notes', '설명', '발음', '품사', '예문',
+      '日本語', '単語', '漢字', 'かな', '読み', '意味', '訳', '韓国語', 'no', 'num', '번호', 'id',
+      'vocabulary', 'term', 'definition', 'translation'
+    ]);
+
     for (let i = startIndex; i < rows.length; i++) {
       const row = rows[i];
       if (!row || row.length === 0) continue;
@@ -139,6 +140,13 @@ export function parseCSVToWords(csvText: string): { words: WordItem[]; error?: s
       const foreign = (row[0] || '').trim();
       const korean = (row[1] || '').trim();
       const notes = (row[2] || '').trim();
+
+      // Check if this row is an accidental header row
+      const isHeaderRow =
+        headerWords.has(foreign.toLowerCase()) &&
+        (headerWords.has(korean.toLowerCase()) || !korean);
+
+      if (isHeaderRow) continue;
 
       // Only add if at least foreign word or korean meaning exists
       if (foreign || korean) {
